@@ -1,0 +1,31 @@
+==================
+Identifier
+==================
+
+dsad
+_dsa
+_1dAa
+_dSa1dsa
+_Dsa11
+_Dsa11_
+_Dsa_dsa
+1das_
+1_das_
+11_
+
+---
+
+(source_file
+  (identifier)
+  (identifier)
+  (identifier)
+  (identifier)
+  (identifier)
+  (identifier)
+  (identifier)
+  (int_literal)
+  (identifier)
+  (int_literal)
+  (identifier)
+  (int_literal)
+)
