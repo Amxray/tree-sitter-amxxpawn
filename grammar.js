@@ -18,11 +18,13 @@ export default grammar({
   word: ($) => $.identifier,
 
   rules: {
+    // #region Main
     source_file: $ => repeat($._definition),
 
     _definition: $ => choice($._literal, $.identifier),
+    // #endregion
 
-    // Literals
+    // #region Literals
     _literal: ($) => choice(
       $.int_literal,
       $.float_literal,
@@ -60,14 +62,17 @@ export default grammar({
       optional(","),
       "}"
     ),
+    // #endregion
 
-    // Base
+    // #region Base
     identifier: $ => /[a-zA-Z_]\w*/,
+    // #endregion
 
-    //Other
+    // #region Other
     escape_sequence: $ => token(
       prec(1, seq("\\", /(?:[abefnrt'\"\\%]|(?:x[a-zA-Z0-9]{0,2}|\d+);?)/))
     ),
+    // #endregion
   }
 });
 
