@@ -23,7 +23,7 @@ const PREC = {
   ADD: 10,
   MULTIPLY: 11,
   UNARY: 12,
-  SIZEOF: 12,
+  META: 12,
   CAST: 13,
   CALL: 14,
   FIELD: 15,
@@ -72,6 +72,101 @@ export default grammar({
     // #endregion
 
     // #region Expressions
+    assignment_expression: $ => prec.right(
+      PREC.ASSIGNMENT,
+      seq(
+        field("left", choice(
+          $.identifier,
+          $.index_expression,
+        )),
+        field("operator", choice(
+          "=",
+          "+=",
+          "-=",
+          "*=",
+          "/=",
+          "%=",
+          "&=",
+          "|=",
+          "^=",
+          "<<=",
+          ">>=",
+          ">>>="
+        )),
+        field("right", $._expression)
+      )
+    ),
+    _meta_argument: $ => seq(
+      field("argument", $._expression),
+      repeat(field("dimension", seq("[", "]")))
+    ),
+    meta_expression: $ => prec(
+      PREC.META,
+      seq(
+        field("operator", choice("sizeof", "tagof")),
+        choice(
+          seq("(", $._meta_argument, ")"),
+          $._meta_argument
+        )
+      )
+    ),
+    update_expression: $ => choice(
+      prec.right(
+        PREC.UNARY,
+        seq(
+          field("operator", choice("++", "--")),
+          field("argument", $._expression)
+        )
+      ),
+      prec.left(
+        PREC.CALL,
+        seq(
+          field("argument", $._expression),
+          field("operator", choice("++", "--"))
+        )
+      )
+    ),
+    ternary_expression: $ => prec.right(
+      PREC.TERNARY,
+      seq(
+        field("condition", $._expression),
+        "?",
+        field("consequence", $._expression),
+        ":",
+        field("alternative", $._expression)
+      )
+    ),
+    binary_expression: $ => {
+      const table = [
+        [PREC.MULTIPLY, choice('*', '/', '%')],
+        [PREC.ADD, choice('+', '-')],
+        [PREC.SHIFT, choice('<<', '>>', '>>>')],
+        [PREC.RELATIONAL, choice('<', '<=', '>', '>=')],
+        [PREC.EQUAL, choice('==', '!=')],
+        [PREC.BITWISE_AND, '&'],
+        [PREC.EXCLUSIVE_OR, '^'],
+        [PREC.INCLUSIVE_OR, '|'],
+        [PREC.LOGICAL_AND, '&&'],
+        [PREC.LOGICAL_OR, '||'],
+      ];
+
+      return choice(...table.map(([precedence, operator]) =>
+        prec.left(precedence, seq(
+          field('left', $._expression),
+          field('operator', operator),
+          field('right', $._expression),
+        ))
+      ));
+    },
+    unary_expression: $ => prec.right(
+      PREC.UNARY,
+      seq(
+        field("operator", choice(
+          "!", "~", "-", "+", "&"
+        )),
+        field("argument", $._expression)
+      )
+    ),
     comma_expression: $ => prec.left(
       PREC.COMMA,
       seq(
@@ -122,15 +217,15 @@ export default grammar({
         field("arguments", $._arguments)
       )
     ),
-    _expression: $ => choice( //Todo
-      // Todo: assigment
+    _expression: $ => choice(
+      $.assignment_expression,
       $.call_expression,
       $.index_expression,
-      // Todo: ternary
-      // Todo: unary
-      // Todo: binary
-      // Todo: update
-      // Todo: sizeof
+      $.ternary_expression,
+      $.unary_expression,
+      $.binary_expression,
+      $.update_expression,
+      $.meta_expression,
       $.type_cast,
       $._literal,
       $.parenthesized_expression,
