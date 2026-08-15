@@ -21,7 +21,37 @@ export default grammar({
     // #region Main
     source_file: $ => repeat($._definition),
 
-    _definition: $ => choice($._literal, $.identifier),
+    _definition: $ => choice(
+      $.global_variable_declaration,
+    ),
+    // #endregion
+
+    // #region Vars
+    global_variable_declaration: $ => seq(
+      alias($.global_variable_modifiers, $.modifiers),
+      commaSep1($.variable),
+      optional($._semicolon)
+    ),
+
+    variable_declaration: $ => seq(
+      alias($.variable_modifiers, $.modifiers),
+      commaSep1($.variable),
+      optional($._semicolon),
+    ),
+
+    variable: $ => seq(
+      optional($._type_definition),
+      field("name", $.identifier),
+      repeat($.dimension),
+      optional($._value),
+    ),
+    // #endregion
+
+    // #region Expressions
+    _expression: $ => choice( //Todo
+      $.identifier,
+      $._literal
+    ),
     // #endregion
 
     // #region Literals
@@ -33,7 +63,6 @@ export default grammar({
       $.bool_literal,
       $.array_literal,
     ),
-
     int_literal: $ => token(choice(DIGITS, seq("0x", HEX_DIGITS), seq("0b", BINARY_DIGITS))),
     float_literal: $ => token(seq(DIGITS, ".", DIGITS, optional(EXPONENT))),
     bool_literal: $ => token(choice("true", "false")),
@@ -65,13 +94,20 @@ export default grammar({
     // #endregion
 
     // #region Base
+    _value: $ => seq("=", field("value", $._expression)),
+    dimension: $ => seq("[", optional(field("size", $._expression)), "]"),
+    _type_definition: $ => seq(field("type", $._type), ":"),
+    _type: $ => choice($.builtin_type, $.identifier, $.any_type),
+    builtin_type: $ => choice("Float", "bool", "_"),
+    any_type: $ => "any",
     identifier: $ => /[a-zA-Z_]\w*/,
     // #endregion
 
     // #region Other
-    escape_sequence: $ => token(
-      prec(1, seq("\\", /(?:[abefnrt'\"\\%]|(?:x[a-zA-Z0-9]{0,2}|\d+);?)/))
-    ),
+    global_variable_modifiers: $ => repeat1(choice("new", "static", "public", "stock", "const")),
+    variable_modifiers: $ => repeat1(choice("new", "static", "const")),
+    escape_sequence: $ => token(prec(1, seq("\\", /(?:[abefnrt'\"\\%]|(?:x[a-zA-Z0-9]{0,2}|\d+);?)/))),
+    _semicolon: $ => ";",
     // #endregion
   }
 });
