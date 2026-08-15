@@ -115,9 +115,12 @@ export default grammar({
       ))),
       ")"
     ),
-    call_expression: $ => seq(
-      field("function", $.identifier),
-      field("arguments", $._arguments)
+    call_expression: $ => prec(
+      PREC.CALL,
+      seq(
+        field("function", $.identifier),
+        field("arguments", $._arguments)
+      )
     ),
     _expression: $ => choice( //Todo
       // Todo: assigment
