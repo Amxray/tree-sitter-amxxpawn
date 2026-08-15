@@ -8,10 +8,10 @@
 // @ts-nocheck
 
 const PREC = {
+  COMMA: -2,
   ASSIGNMENT: -1,
   DEFAULT: 0,
   TERNARY: 1,
-  FREE: 2,
   LOGICAL_OR: 2,
   LOGICAL_AND: 3,
   INCLUSIVE_OR: 4,
@@ -19,14 +19,15 @@ const PREC = {
   BITWISE_AND: 6,
   EQUAL: 7,
   RELATIONAL: 8,
-  SIZEOF: 9,
-  SHIFT: 10,
-  ADD: 11,
-  MULTIPLY: 12,
-  UNARY: 14,
-  CAST: 15,
-  CALL: 16,
-  FIELD: 17,
+  SHIFT: 9,
+  ADD: 10,
+  MULTIPLY: 11,
+  UNARY: 12,
+  SIZEOF: 12,
+  CAST: 13,
+  CALL: 14,
+  FIELD: 15,
+  PRIMARY: 16,
 };
 
 const DIGITS = /\d[\d_]*/;
@@ -71,6 +72,22 @@ export default grammar({
     // #endregion
 
     // #region Expressions
+    comma_expression: $ => prec.left(
+      PREC.COMMA,
+      seq(
+        field("left", $._expression),
+        ",",
+        field("right", $._expression),
+      )
+    ),
+    parenthesized_expression: $ => prec(
+      PREC.PRIMARY,
+      seq(
+        "(",
+        field("expression", $._expression),
+        ")"
+      )
+    ),
     index_expression: ($) => seq(
       field("array", choice($.identifier, $.index_expression)),
       "[",
@@ -103,11 +120,19 @@ export default grammar({
       field("arguments", $._arguments)
     ),
     _expression: $ => choice( //Todo
+      // Todo: assigment
       $.call_expression,
-      $.type_cast,
       $.index_expression,
-      $.identifier,
-      $._literal
+      // Todo: ternary
+      // Todo: unary
+      // Todo: binary
+      // Todo: update
+      // Todo: sizeof
+      $.type_cast,
+      $._literal,
+      $.parenthesized_expression,
+      $.comma_expression,
+      $.identifier
     ),
     // #endregion
 
