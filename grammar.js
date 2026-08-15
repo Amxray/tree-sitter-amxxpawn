@@ -7,6 +7,28 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-nocheck
 
+const PREC = {
+  ASSIGNMENT: -1,
+  DEFAULT: 0,
+  TERNARY: 1,
+  FREE: 2,
+  LOGICAL_OR: 2,
+  LOGICAL_AND: 3,
+  INCLUSIVE_OR: 4,
+  EXCLUSIVE_OR: 5,
+  BITWISE_AND: 6,
+  EQUAL: 7,
+  RELATIONAL: 8,
+  SIZEOF: 9,
+  SHIFT: 10,
+  ADD: 11,
+  MULTIPLY: 12,
+  UNARY: 14,
+  CAST: 15,
+  CALL: 16,
+  FIELD: 17,
+};
+
 const DIGITS = /\d[\d_]*/;
 const HEX_DIGITS = /[0-9a-fA-F_]+/;
 const BINARY_DIGITS = /[01_]+/;
@@ -22,7 +44,8 @@ export default grammar({
     source_file: $ => repeat($._definition),
 
     _definition: $ => choice(
-      $.global_variable_declaration,
+      // $.global_variable_declaration,
+      $._expression
     ),
     // #endregion
 
@@ -43,12 +66,46 @@ export default grammar({
       optional($._type_definition),
       field("name", $.identifier),
       repeat($.dimension),
-      optional($._value),
+      optional($._initializer),
     ),
     // #endregion
 
     // #region Expressions
+    index_expression: ($) => seq(
+      field("array", choice($.identifier, $.index_expression)),
+      "[",
+      field("index", $._expression),
+      "]"
+    ),
+    type_cast: ($) => prec.left(
+      PREC.CAST,
+      seq(
+        $._type_definition,
+        $._value
+      ),
+    ),
+    named_argument: $ => seq(
+      ".",
+      field("name", $.identifier),
+      $._initializer
+    ),
+    _arguments: $ => seq(
+      "(",
+      optional(commaSep1(choice(
+        $.named_argument,
+        $.omitted_argument,
+        $._expression,
+      ))),
+      ")"
+    ),
+    call_expression: $ => seq(
+      field("function", $.identifier),
+      field("arguments", $._arguments)
+    ),
     _expression: $ => choice( //Todo
+      $.call_expression,
+      $.type_cast,
+      $.index_expression,
       $.identifier,
       $._literal
     ),
@@ -94,7 +151,8 @@ export default grammar({
     // #endregion
 
     // #region Base
-    _value: $ => seq("=", field("value", $._expression)),
+    _value: $ => field("value", $._expression),
+    _initializer: $ => seq("=", $._value),
     dimension: $ => seq("[", optional(field("size", $._expression)), "]"),
     _type_definition: $ => seq(field("type", $._type), ":"),
     _type: $ => choice($.builtin_type, $.identifier, $.any_type),
@@ -106,6 +164,7 @@ export default grammar({
     // #region Other
     global_variable_modifiers: $ => repeat1(choice("new", "static", "public", "stock", "const")),
     variable_modifiers: $ => repeat1(choice("new", "static", "const")),
+    omitted_argument: $ => "_",
     escape_sequence: $ => token(prec(1, seq("\\", /(?:[abefnrt'\"\\%]|(?:x[a-zA-Z0-9]{0,2}|\d+);?)/))),
     _semicolon: $ => ";",
     // #endregion
