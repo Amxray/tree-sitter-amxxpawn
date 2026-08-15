@@ -1,0 +1,209 @@
+==================
+Int
+==================
+
+1
+10
+10_1
+10
+10_____1
+10_1__
+1231____321__
+0x321FF1
+0x321__F__F___FF
+0x__321__F__F___FF
+0x__321__F__F___FF__
+0x321__F__F___FF__
+0x__321FFFF
+0x321FFFF__
+0x__321FFFF__
+0b000101
+0b000__1__1___00
+0b__000__0__0___00
+0b__000__0__1___00__
+0b00__0__0___01__
+0b__1001
+0b1001__
+0b__1001__
+
+---
+
+(source_file
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+  (int_literal)
+)
+
+
+==================
+Boolean
+==================
+
+true
+false
+
+---
+
+(source_file
+  (bool_literal)
+  (bool_literal)
+)
+
+
+==================
+Char
+==================
+
+'a'
+'b'
+'\n'
+
+---
+
+(source_file
+  (char_literal
+    (character)
+  )
+  (char_literal
+    (character)
+  )
+  (char_literal
+    (escape_sequence)
+  )
+)
+
+
+==================
+Float
+==================
+
+0.0
+0.1
+0.00001
+50.00001
+0.00001e190
+0.00001e-190
+100__000___.100___000___e100000
+100000___.100___000___e100000
+100000.100___000___e100000
+100000.100000___e100000
+100000.100000e100000
+100000.100000e100000
+
+---
+
+(source_file
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+  (float_literal)
+)
+
+
+==================
+String
+==================
+
+""
+"dasdsa"
+"\"%s<%i><%s><%s>\" %s \"%s\""
+"%.2f\%"
+
+---
+
+(source_file
+  (string_literal)
+  (string_literal
+    (string_content)
+  )
+  (string_literal
+    (string_content
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence)
+    )
+  )
+  (string_literal
+    (string_content
+      (escape_sequence)
+    )
+  )
+)
+
+
+==================
+Array
+==================
+
+{ 1, 2, "dsad\nsa", '1', { 1, 2 } }
+{}
+{ }
+{ , } { , }
+{ 1, }
+{ {} }
+{ { { } } }
+
+---
+
+(source_file
+  (array_literal
+    (int_literal)
+    (int_literal)
+    (string_literal
+      (string_content
+        (escape_sequence)
+      )
+    )
+    (char_literal
+      (character)
+    )
+    (array_literal
+      (int_literal)
+      (int_literal)
+    )
+  )
+  (array_literal)
+  (array_literal)
+  (array_literal)
+  (array_literal)
+  (array_literal
+    (int_literal)
+  )
+  (array_literal
+    (array_literal)
+  )
+  (array_literal
+    (array_literal
+      (array_literal)
+    )
+  )
+)
