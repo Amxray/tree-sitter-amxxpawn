@@ -15,10 +15,12 @@ const EXPONENT = /e-?\d*/;
 export default grammar({
   name: "amxxpawn",
 
+  word: ($) => $.identifier,
+
   rules: {
     source_file: $ => repeat($._definition),
 
-    _definition: $ => choice($._literal),
+    _definition: $ => choice($._literal, $.identifier),
 
     // Literals
     _literal: ($) => choice(
@@ -58,6 +60,9 @@ export default grammar({
       optional(","),
       "}"
     ),
+
+    // Base
+    identifier: $ => /[a-zA-Z_]\w*/,
 
     //Other
     escape_sequence: $ => token(
