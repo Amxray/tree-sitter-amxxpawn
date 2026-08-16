@@ -97,8 +97,8 @@ export default grammar({
       )
     ),
     _meta_argument: $ => seq(
-      field("argument", $._expression),
-      repeat(field("dimension", seq("[", "]")))
+      field("argument", $.identifier),
+      repeat(seq("[", "]"))
     ),
     meta_expression: $ => prec(
       PREC.META,
@@ -183,11 +183,14 @@ export default grammar({
         ")"
       )
     ),
-    index_expression: ($) => seq(
-      field("array", choice($.identifier, $.index_expression)),
-      "[",
-      field("index", $._expression),
-      "]"
+    index_expression: ($) => prec(
+      PREC.PRIMARY,
+      seq(
+        field("array", choice($.identifier, $.index_expression)),
+        "[",
+        field("index", $._expression),
+        "]"
+      )
     ),
     type_cast: ($) => prec.left(
       PREC.CAST,
@@ -277,7 +280,7 @@ export default grammar({
     _value: $ => field("value", $._expression),
     _initializer: $ => seq("=", $._value),
     dimension: $ => seq("[", optional(field("size", $._expression)), "]"),
-    _type_definition: $ => seq(field("type", $._type), ":"),
+    _type_definition: $ => seq(field("type", $._type), token.immediate(":")),
     _type: $ => choice($.builtin_type, $.identifier, $.any_type),
     builtin_type: $ => choice("Float", "bool", "_"),
     any_type: $ => "any",
