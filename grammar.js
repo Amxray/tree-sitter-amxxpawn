@@ -75,7 +75,6 @@ export default grammar({
   inline: ($) => [
     $._type_definition,
     $._initializer,
-    $._definition,
     $._statement,
     $._meta_argument,
     $._semicolon,
@@ -98,8 +97,8 @@ export default grammar({
         $.function_declaration,
       ),
 
-    parameters: ($) => seq("(", commaSep($.parameter), ")"),
-
+    parameters: ($) =>
+      seq("(", commaSep(choice($.parameter, $.variadic_literal)), ")"),
     parameter: ($) =>
       seq(
         optional(alias($.parameter_modifiers, $.modifiers)),
@@ -116,6 +115,7 @@ export default grammar({
       seq(
         alias($.function_declaration_modifiers, $.modifiers),
         optional($._type_definition),
+        optional(token.immediate("\@")),
         name_field($.identifier),
         $.parameters,
         optional($._semicolon),
@@ -124,6 +124,7 @@ export default grammar({
       seq(
         optional(alias($.function_definition_modifiers, $.modifiers)),
         optional($._type_definition),
+        optional(token.immediate("\@")),
         name_field($.identifier),
         $.parameters,
         choice(body_field($._statement), optional($._semicolon)),
@@ -307,7 +308,7 @@ export default grammar({
       prec(
         PREC.META,
         seq(
-          operator_field(choice("sizeof", "tagof")),
+          operator_field(choice("sizeof", "tagof", "charsmax")),
           choice(seq(...parenthesized($._meta_argument)), $._meta_argument),
         ),
       ),
@@ -339,51 +340,14 @@ export default grammar({
           alternative_field($._expression),
         ),
       ),
-    binary_expression: ($) => {
-      const table = [
-        [PREC.MULTIPLY, choice("*", "/", "%")],
-        [PREC.ADD, choice("+", "-")],
-        [PREC.SHIFT, choice("<<", ">>", ">>>")],
-        [PREC.RELATIONAL, choice("<", "<=", ">", ">=")],
-        [PREC.EQUAL, choice("==", "!=")],
-        [PREC.BITWISE_AND, "&"],
-        [PREC.EXCLUSIVE_OR, "^"],
-        [PREC.INCLUSIVE_OR, "|"],
-        [PREC.LOGICAL_AND, "&&"],
-        [PREC.LOGICAL_OR, "||"],
-      ];
-
-      return choice(
-        ...table.map(([precedence, operator]) =>
-          prec.left(
-            precedence,
-            seq(
-              left_field($._expression),
-              operator_field(operator),
-              right_field($._expression),
-            ),
-          ),
-        ),
-      );
-    },
-    unary_expression: ($) =>
-      prec.right(
-        PREC.UNARY,
-        seq(
-          operator_field(choice("!", "~", "-", "+", "&")),
-          argument_field($._expression),
-        ),
-      ),
+    binary_expression: ($) => binary_expression($._expression),
+    unary_expression: ($) => unary_expression($._expression),
     comma_expression: ($) =>
       prec.left(
         PREC.COMMA,
         seq(left_field($._expression), ",", right_field($._expression)),
       ),
-    parenthesized_expression: ($) =>
-      prec(
-        PREC.PRIMARY,
-        seq(...parenthesized(expression_field($._expression))),
-      ),
+    parenthesized_expression: ($) => parenthesized_expression($._expression),
     index_expression: ($) =>
       prec(
         PREC.PRIMARY,
@@ -408,13 +372,13 @@ export default grammar({
         $.call_expression,
         $.index_expression,
         $.ternary_expression,
+        $.update_expression,
         $.unary_expression,
         $.binary_expression,
-        $.update_expression,
         $.meta_expression,
         $.type_cast,
-        $._literal,
         $.parenthesized_expression,
+        $._literal,
         $.comma_expression,
         $.identifier,
       ),
@@ -450,16 +414,46 @@ export default grammar({
             choice(
               token.immediate(prec(1, /[^"\\]|\\\r?\n/)),
               $.escape_sequence,
+              $.format_sequence,
             ),
           ),
           $.content,
         ),
         '"',
       ),
+
+    _array_expression: ($) =>
+      choice(
+        $.array_binary_expression,
+        $.array_unary_expression,
+        $.array_parenthesized_expression,
+        $.meta_expression,
+        $.array_type_cast,
+        $._literal,
+      ),
+    array_binary_expression: ($) => binary_expression($._array_expression),
+    array_unary_expression: ($) => unary_expression($._array_expression),
+    array_parenthesized_expression: ($) =>
+      parenthesized_expression($._expression),
+    array_type_cast: ($) =>
+      prec.left(
+        PREC.CAST,
+        seq($._type_definition, value_field($._array_expression)),
+      ),
     array_literal: ($) =>
       seq(
-        ...braced(commaSep(choice($._literal, $.array_literal)), optional(",")),
+        "{",
+        choice(
+          $.variadic_literal,
+          seq(
+            commaSep(choice($._array_expression, $.array_literal)),
+            optional(seq(",", $.variadic_literal)),
+          ),
+        ),
+        optional(","),
+        "}",
       ),
+    variadic_literal: ($) => seq(optional($._type_definition), "..."),
     // #endregion
 
     // #region Preproc
@@ -536,10 +530,25 @@ export default grammar({
           seq(
             choice("\\", "^"),
             choice(
-              /[abefnrtvwyd\\'"%?]/,
+              /[abefnrtvwydR\\'"%?]/,
               /x[0-9a-fA-F]+;?/,
               /[0-9]+;?/,
               /d[0-9]{3};?/,
+            ),
+          ),
+        ),
+      ),
+    format_sequence: ($) =>
+      token(
+        prec(
+          1,
+          seq(
+            "%",
+            choice(
+              "%",
+              "L",
+              /-?\+?0?\d*[aAbBcdilLsuUxX]/,
+              /(?:\d+)?(?:\.\d+)?f/,
             ),
           ),
         ),
@@ -575,4 +584,39 @@ function braced(...rules) {
 
 function surround(open, close, ...rules) {
   return [open, ...rules, close];
+}
+
+function binary_expression(rule) {
+  const table = [
+    [PREC.MULTIPLY, choice("*", "/", "%")],
+    [PREC.ADD, choice("+", "-")],
+    [PREC.SHIFT, choice("<<", ">>", ">>>")],
+    [PREC.RELATIONAL, choice("<", "<=", ">", ">=")],
+    [PREC.EQUAL, choice("==", "!=")],
+    [PREC.BITWISE_AND, "&"],
+    [PREC.EXCLUSIVE_OR, "^"],
+    [PREC.INCLUSIVE_OR, "|"],
+    [PREC.LOGICAL_AND, "&&"],
+    [PREC.LOGICAL_OR, "||"],
+  ];
+
+  return choice(
+    ...table.map(([precedence, operator]) =>
+      prec.left(
+        precedence,
+        seq(left_field(rule), operator_field(operator), right_field(rule)),
+      ),
+    ),
+  );
+}
+
+function unary_expression(rule) {
+  return prec.right(
+    PREC.UNARY,
+    seq(operator_field(choice("!", "~", "-", "+", "&")), argument_field(rule)),
+  );
+}
+
+function parenthesized_expression(rule) {
+  return prec(PREC.PRIMARY, seq(...parenthesized(expression_field(rule))));
 }
