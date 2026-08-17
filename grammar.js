@@ -52,8 +52,25 @@ export default grammar({
   name: "amxxpawn",
 
   word: ($) => $.identifier,
-  externals: $ => [$.preproc_arg],
-  extras: ($) => [/\s|\\\r?\n/, $.comment, $.preproc_define],
+  externals: ($) => [$.preproc_arg],
+  extras: ($) => [
+    /\s|\\\r?\n/,
+    $.comment,
+    $.preproc_define,
+    $.preproc_function_define,
+    $.preproc_undefine,
+    $.preproc_if,
+    $.preproc_elseif,
+    $.preproc_assert,
+    $.preproc_defined_condition,
+    $.preproc_else,
+    $.preproc_endif,
+    $.preproc_endinput,
+    $.preproc_pragma,
+    $.preproc_error,
+    $.preproc_include,
+    $.preproc_tryinclude,
+  ],
 
   inline: ($) => [
     $._type_definition,
@@ -435,7 +452,7 @@ export default grammar({
               $.escape_sequence,
             ),
           ),
-          $.string_content,
+          $.content,
         ),
         '"',
       ),
@@ -446,11 +463,52 @@ export default grammar({
     // #endregion
 
     // #region Preproc
-    preproc_define: ($) =>
+    system_lib_string: ($) =>
+      seq(
+        "<",
+        alias(
+          token.immediate(repeat1(choice(/[^>\\\r\n]+/, /\\./))),
+          $.content,
+        ),
+        ">",
+      ),
+    preproc_params: ($) =>
+      seq(
+        ...parenthesized(
+          alias(token.immediate(seq("%", /[0-9]/)), $.parameter),
+          repeat(
+            seq(",", alias(token.immediate(seq("%", /[0-9]/)), $.parameter)),
+          ),
+        ),
+      ),
+    preproc_function_define: ($) =>
       seq(
         "#define",
         name_field($.identifier),
+        alias($.preproc_params, $.parameters),
         value_field($.preproc_arg),
+      ),
+    preproc_define: ($) =>
+      seq("#define", name_field($.identifier), value_field($.preproc_arg)),
+    preproc_undefine: ($) => seq("#undef", name_field($.identifier)),
+    preproc_if: ($) => seq("#if", condition_field($.preproc_arg)),
+    preproc_elseif: ($) => seq("#elseif", condition_field($.preproc_arg)),
+    preproc_assert: ($) => seq("#assert", condition_field($.preproc_arg)),
+    preproc_defined_condition: ($) => seq("defined", name_field($.identifier)),
+    preproc_else: ($) => "#else",
+    preproc_endif: ($) => "#endif",
+    preproc_endinput: ($) => "#endinput",
+    preproc_pragma: ($) => seq("#pragma", $.preproc_arg),
+    preproc_error: ($) => seq("#error", $.preproc_arg),
+    preproc_include: ($) =>
+      seq(
+        "#include",
+        field("path", choice($.string_literal, $.system_lib_string)),
+      ),
+    preproc_tryinclude: ($) =>
+      seq(
+        "#tryinclude",
+        field("path", choice($.string_literal, $.system_lib_string)),
       ),
     // #endregion
 
