@@ -52,8 +52,8 @@ export default grammar({
   name: "amxxpawn",
 
   word: ($) => $.identifier,
-
-  extras: ($) => [/\s|\\\r?\n/, $.comment],
+  externals: $ => [$.preproc_arg],
+  extras: ($) => [/\s|\\\r?\n/, $.comment, $.preproc_define],
 
   inline: ($) => [
     $._type_definition,
@@ -442,6 +442,15 @@ export default grammar({
     array_literal: ($) =>
       seq(
         ...braced(commaSep(choice($._literal, $.array_literal)), optional(",")),
+      ),
+    // #endregion
+
+    // #region Preproc
+    preproc_define: ($) =>
+      seq(
+        "#define",
+        name_field($.identifier),
+        value_field($.preproc_arg),
       ),
     // #endregion
 
