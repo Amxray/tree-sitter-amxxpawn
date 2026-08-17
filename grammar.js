@@ -52,13 +52,29 @@ export default grammar({
   name: "amxxpawn",
 
   word: ($) => $.identifier,
-
-  extras: ($) => [/\s|\\\r?\n/, $.comment],
+  externals: ($) => [$.preproc_arg],
+  extras: ($) => [
+    /\s|\\\r?\n/,
+    $.comment,
+    $.preproc_define,
+    $.preproc_function_define,
+    $.preproc_undefine,
+    $.preproc_if,
+    $.preproc_elseif,
+    $.preproc_assert,
+    $.preproc_defined_condition,
+    $.preproc_else,
+    $.preproc_endif,
+    $.preproc_endinput,
+    $.preproc_pragma,
+    $.preproc_error,
+    $.preproc_include,
+    $.preproc_tryinclude,
+  ],
 
   inline: ($) => [
     $._type_definition,
     $._initializer,
-    $._definition,
     $._statement,
     $._meta_argument,
     $._semicolon,
@@ -81,8 +97,8 @@ export default grammar({
         $.function_declaration,
       ),
 
-    parameters: ($) => seq("(", commaSep($.parameter), ")"),
-
+    parameters: ($) =>
+      seq("(", commaSep(choice($.parameter, $.variadic_literal)), ")"),
     parameter: ($) =>
       seq(
         optional(alias($.parameter_modifiers, $.modifiers)),
@@ -99,6 +115,7 @@ export default grammar({
       seq(
         alias($.function_declaration_modifiers, $.modifiers),
         optional($._type_definition),
+        optional(token.immediate("\@")),
         name_field($.identifier),
         $.parameters,
         optional($._semicolon),
@@ -107,6 +124,7 @@ export default grammar({
       seq(
         optional(alias($.function_definition_modifiers, $.modifiers)),
         optional($._type_definition),
+        optional(token.immediate("\@")),
         name_field($.identifier),
         $.parameters,
         choice(body_field($._statement), optional($._semicolon)),
@@ -290,7 +308,7 @@ export default grammar({
       prec(
         PREC.META,
         seq(
-          operator_field(choice("sizeof", "tagof")),
+          operator_field(choice("sizeof", "tagof", "charsmax")),
           choice(seq(...parenthesized($._meta_argument)), $._meta_argument),
         ),
       ),
@@ -322,51 +340,14 @@ export default grammar({
           alternative_field($._expression),
         ),
       ),
-    binary_expression: ($) => {
-      const table = [
-        [PREC.MULTIPLY, choice("*", "/", "%")],
-        [PREC.ADD, choice("+", "-")],
-        [PREC.SHIFT, choice("<<", ">>", ">>>")],
-        [PREC.RELATIONAL, choice("<", "<=", ">", ">=")],
-        [PREC.EQUAL, choice("==", "!=")],
-        [PREC.BITWISE_AND, "&"],
-        [PREC.EXCLUSIVE_OR, "^"],
-        [PREC.INCLUSIVE_OR, "|"],
-        [PREC.LOGICAL_AND, "&&"],
-        [PREC.LOGICAL_OR, "||"],
-      ];
-
-      return choice(
-        ...table.map(([precedence, operator]) =>
-          prec.left(
-            precedence,
-            seq(
-              left_field($._expression),
-              operator_field(operator),
-              right_field($._expression),
-            ),
-          ),
-        ),
-      );
-    },
-    unary_expression: ($) =>
-      prec.right(
-        PREC.UNARY,
-        seq(
-          operator_field(choice("!", "~", "-", "+", "&")),
-          argument_field($._expression),
-        ),
-      ),
+    binary_expression: ($) => binary_expression($._expression),
+    unary_expression: ($) => unary_expression($._expression),
     comma_expression: ($) =>
       prec.left(
         PREC.COMMA,
         seq(left_field($._expression), ",", right_field($._expression)),
       ),
-    parenthesized_expression: ($) =>
-      prec(
-        PREC.PRIMARY,
-        seq(...parenthesized(expression_field($._expression))),
-      ),
+    parenthesized_expression: ($) => parenthesized_expression($._expression),
     index_expression: ($) =>
       prec(
         PREC.PRIMARY,
@@ -391,13 +372,13 @@ export default grammar({
         $.call_expression,
         $.index_expression,
         $.ternary_expression,
+        $.update_expression,
         $.unary_expression,
         $.binary_expression,
-        $.update_expression,
         $.meta_expression,
         $.type_cast,
-        $._literal,
         $.parenthesized_expression,
+        $._literal,
         $.comma_expression,
         $.identifier,
       ),
@@ -433,15 +414,95 @@ export default grammar({
             choice(
               token.immediate(prec(1, /[^"\\]|\\\r?\n/)),
               $.escape_sequence,
+              $.format_sequence,
             ),
           ),
-          $.string_content,
+          $.content,
         ),
         '"',
       ),
+
+    _array_expression: ($) =>
+      choice(
+        $.array_binary_expression,
+        $.array_unary_expression,
+        $.array_parenthesized_expression,
+        $.meta_expression,
+        $.array_type_cast,
+        $._literal,
+      ),
+    array_binary_expression: ($) => binary_expression($._array_expression),
+    array_unary_expression: ($) => unary_expression($._array_expression),
+    array_parenthesized_expression: ($) =>
+      parenthesized_expression($._expression),
+    array_type_cast: ($) =>
+      prec.left(
+        PREC.CAST,
+        seq($._type_definition, value_field($._array_expression)),
+      ),
     array_literal: ($) =>
       seq(
-        ...braced(commaSep(choice($._literal, $.array_literal)), optional(",")),
+        "{",
+        choice(
+          $.variadic_literal,
+          seq(
+            commaSep(choice($._array_expression, $.array_literal)),
+            optional(seq(",", $.variadic_literal)),
+          ),
+        ),
+        optional(","),
+        "}",
+      ),
+    variadic_literal: ($) => seq(optional($._type_definition), "..."),
+    // #endregion
+
+    // #region Preproc
+    system_lib_string: ($) =>
+      seq(
+        "<",
+        alias(
+          token.immediate(repeat1(choice(/[^>\\\r\n]+/, /\\./))),
+          $.content,
+        ),
+        ">",
+      ),
+    preproc_params: ($) =>
+      seq(
+        ...parenthesized(
+          alias(token.immediate(seq("%", /[0-9]/)), $.parameter),
+          repeat(
+            seq(",", alias(token.immediate(seq("%", /[0-9]/)), $.parameter)),
+          ),
+        ),
+      ),
+    preproc_function_define: ($) =>
+      seq(
+        "#define",
+        name_field($.identifier),
+        alias($.preproc_params, $.parameters),
+        value_field($.preproc_arg),
+      ),
+    preproc_define: ($) =>
+      seq("#define", name_field($.identifier), value_field($.preproc_arg)),
+    preproc_undefine: ($) => seq("#undef", name_field($.identifier)),
+    preproc_if: ($) => seq("#if", condition_field($.preproc_arg)),
+    preproc_elseif: ($) => seq("#elseif", condition_field($.preproc_arg)),
+    preproc_assert: ($) => seq("#assert", condition_field($.preproc_arg)),
+    preproc_defined_condition: ($) => seq("defined", name_field($.identifier)),
+    preproc_else: ($) => "#else",
+    preproc_endif: ($) => "#endif",
+    preproc_endinput: ($) => "#endinput",
+    preproc_pragma: ($) => seq("#pragma", $.preproc_arg),
+    preproc_error: ($) => seq("#error", $.preproc_arg),
+    preproc_include: ($) =>
+      seq(
+        "#include",
+        field("path", choice($.string_literal, $.system_lib_string)),
+      ),
+    preproc_tryinclude: ($) =>
+      seq(
+        "#tryinclude",
+        field("path", choice($.string_literal, $.system_lib_string)),
       ),
     // #endregion
 
@@ -469,10 +530,25 @@ export default grammar({
           seq(
             choice("\\", "^"),
             choice(
-              /[abefnrtvwyd\\'"%?]/,
+              /[abefnrtvwydR\\'"%?]/,
               /x[0-9a-fA-F]+;?/,
               /[0-9]+;?/,
               /d[0-9]{3};?/,
+            ),
+          ),
+        ),
+      ),
+    format_sequence: ($) =>
+      token(
+        prec(
+          1,
+          seq(
+            "%",
+            choice(
+              "%",
+              "L",
+              /-?\+?0?\d*[aAbBcdilLsuUxX]/,
+              /(?:\d+)?(?:\.\d+)?f/,
             ),
           ),
         ),
@@ -508,4 +584,39 @@ function braced(...rules) {
 
 function surround(open, close, ...rules) {
   return [open, ...rules, close];
+}
+
+function binary_expression(rule) {
+  const table = [
+    [PREC.MULTIPLY, choice("*", "/", "%")],
+    [PREC.ADD, choice("+", "-")],
+    [PREC.SHIFT, choice("<<", ">>", ">>>")],
+    [PREC.RELATIONAL, choice("<", "<=", ">", ">=")],
+    [PREC.EQUAL, choice("==", "!=")],
+    [PREC.BITWISE_AND, "&"],
+    [PREC.EXCLUSIVE_OR, "^"],
+    [PREC.INCLUSIVE_OR, "|"],
+    [PREC.LOGICAL_AND, "&&"],
+    [PREC.LOGICAL_OR, "||"],
+  ];
+
+  return choice(
+    ...table.map(([precedence, operator]) =>
+      prec.left(
+        precedence,
+        seq(left_field(rule), operator_field(operator), right_field(rule)),
+      ),
+    ),
+  );
+}
+
+function unary_expression(rule) {
+  return prec.right(
+    PREC.UNARY,
+    seq(operator_field(choice("!", "~", "-", "+", "&")), argument_field(rule)),
+  );
+}
+
+function parenthesized_expression(rule) {
+  return prec(PREC.PRIMARY, seq(...parenthesized(expression_field(rule))));
 }
