@@ -11,6 +11,8 @@ const PREC = {
   COMMA: -2,
   ASSIGNMENT: -1,
   DEFAULT: 0,
+  IF: 0,
+  ELSE: 1,
   TERNARY: 1,
   LOGICAL_OR: 2,
   LOGICAL_AND: 3,
@@ -32,12 +34,40 @@ const PREC = {
 const DIGITS = /\d[\d_]*/;
 const HEX_DIGITS = /[0-9a-fA-F_]+/;
 const BINARY_DIGITS = /[01_]+/;
-const EXPONENT = /e-?\d*/;
+const EXPONENT = /e-?\d+/;
+
+const name_field = (rule) => field("name", rule);
+const value_field = (rule) => field("value", rule);
+const operator_field = (rule) => field("operator", rule);
+const body_field = (rule) => field("body", rule);
+const condition_field = (rule) => field("condition", rule);
+const consequence_field = (rule) => field("consequence", rule);
+const alternative_field = (rule) => field("alternative", rule);
+const expression_field = (rule) => field("expression", rule);
+const left_field = (rule) => field("left", rule);
+const right_field = (rule) => field("right", rule);
+const argument_field = (rule) => field("argument", rule);
 
 export default grammar({
   name: "amxxpawn",
 
   word: ($) => $.identifier,
+
+  extras: ($) => [/\s|\\\r?\n/, $.comment],
+
+  inline: ($) => [
+    $._type_definition,
+    $._initializer,
+    $._definition,
+    $._statement,
+    $._meta_argument,
+    $._semicolon,
+  ],
+
+  conflicts: ($) => [
+    [$.function_definition_modifiers, $.global_variable_modifiers],
+    [$.function_definition],
+  ],
 
   rules: {
     // #region Main
@@ -47,7 +77,39 @@ export default grammar({
       choice(
         $.enum,
         $.global_variable_declaration,
-        // $._expression
+        $.function_definition,
+        $.function_declaration,
+      ),
+
+    parameters: ($) => seq("(", commaSep($.parameter), ")"),
+
+    parameter: ($) =>
+      seq(
+        optional(alias($.parameter_modifiers, $.modifiers)),
+        optional($._type_definition),
+        name_field($.identifier),
+        repeat(choice($.dimension, $.fixed_dimension)),
+        optional($._initializer),
+      ),
+    parameter_modifiers: ($) => choice(seq("const", optional("&")), "&"),
+    function_definition_modifiers: ($) =>
+      repeat1(choice("public", "static", "stock")),
+    function_declaration_modifiers: ($) => choice("native", "forward"),
+    function_declaration: ($) =>
+      seq(
+        alias($.function_declaration_modifiers, $.modifiers),
+        optional($._type_definition),
+        name_field($.identifier),
+        $.parameters,
+        optional($._semicolon),
+      ),
+    function_definition: ($) =>
+      seq(
+        optional(alias($.function_definition_modifiers, $.modifiers)),
+        optional($._type_definition),
+        name_field($.identifier),
+        $.parameters,
+        choice(body_field($._statement), optional($._semicolon)),
       ),
     // #endregion
 
@@ -60,19 +122,18 @@ export default grammar({
       ),
 
     variable_declaration: ($) =>
-      seq(
-        alias($.variable_modifiers, $.modifiers),
-        commaSep1($.variable),
-        optional($._semicolon),
-      ),
+      seq(alias($.variable_modifiers, $.modifiers), commaSep1($.variable)),
 
     variable: ($) =>
       seq(
         optional($._type_definition),
-        field("name", $.identifier),
+        name_field($.identifier),
         repeat(choice($.dimension, $.fixed_dimension)),
         optional($._initializer),
       ),
+    global_variable_modifiers: ($) =>
+      repeat1(choice("new", "static", "public", "stock", "const")),
+    variable_modifiers: ($) => repeat1(choice("new", "static", "const")),
     // #endregion
 
     // #region Enum
@@ -80,12 +141,12 @@ export default grammar({
       seq(
         "enum",
         optional($._type_definition),
-        optional($._name),
+        optional(name_field($.identifier)),
         optional(
           seq(
             ...parenthesized(
-              field("operator", choice("+=", "*=", "<<=")),
-              $._value,
+              operator_field(choice("+=", "*=", "<<=")),
+              value_field($._expression),
             ),
           ),
         ),
@@ -98,9 +159,103 @@ export default grammar({
     enum_entry: ($) =>
       seq(
         optional($._type_definition),
-        $._name,
+        name_field($.identifier),
         optional($.fixed_dimension),
         optional($._initializer),
+      ),
+    // #endregion
+
+    // #region Statement
+    _statement: ($) =>
+      choice(
+        $.variable_declaration_statement,
+        $.block,
+        $.expression_statement,
+        $.if_statement,
+        $.while_statement,
+        $.do_while_statement,
+        $.for_statement,
+        $.switch_statement,
+        $.break_statement,
+        $.continue_statement,
+        $.return_statement,
+      ),
+    variable_declaration_statement: ($) =>
+      seq($.variable_declaration, optional($._semicolon)),
+    block: ($) => seq(...braced(repeat($._statement))),
+    expression_statement: ($) =>
+      prec.right(seq($._expression, optional($._semicolon))),
+    if_statement: ($) =>
+      prec.right(
+        PREC.IF,
+        seq(
+          "if",
+          ...parenthesized(condition_field($._expression)),
+          consequence_field($._statement),
+          optional(
+            seq("else", prec(PREC.ELSE, alternative_field($._statement))),
+          ),
+        ),
+      ),
+    while_statement: ($) =>
+      seq(
+        "while",
+        ...parenthesized(condition_field($._expression)),
+        body_field($._statement),
+      ),
+    do_while_statement: ($) =>
+      seq(
+        "do",
+        body_field($._statement),
+        "while",
+        ...parenthesized(condition_field($._expression)),
+        optional($._semicolon),
+      ),
+    for_statement: ($) =>
+      seq(
+        "for",
+        ...parenthesized(
+          optional(
+            field(
+              "initialization",
+              choice(
+                $.variable_declaration,
+                commaSep1($.assignment_expression),
+              ),
+            ),
+          ),
+          $._semicolon,
+          optional(condition_field($._expression)),
+          $._semicolon,
+          optional(field("iteration", $._expression)),
+        ),
+        body_field($._statement),
+      ),
+    switch_statement: ($) =>
+      seq(
+        "switch",
+        ...parenthesized(condition_field($._expression)),
+        ...braced(repeat($.switch_case)),
+      ),
+    switch_case: ($) =>
+      prec.right(
+        seq(
+          choice(
+            seq("case", value_field(commaSep1($._expression)), ":"),
+            seq("default", ":"),
+          ),
+          body_field($._statement),
+        ),
+      ),
+    break_statement: ($) => seq("break", optional($._semicolon)),
+    continue_statement: ($) => seq("continue", optional($._semicolon)),
+    return_statement: ($) =>
+      prec.right(
+        seq(
+          "return",
+          optional(expression_field($._expression)),
+          optional($._semicolon),
+        ),
       ),
     // #endregion
 
@@ -109,9 +264,8 @@ export default grammar({
       prec.right(
         PREC.ASSIGNMENT,
         seq(
-          field("left", choice($.identifier, $.index_expression)),
-          field(
-            "operator",
+          left_field(choice($.identifier, $.index_expression)),
+          operator_field(
             choice(
               "=",
               "+=",
@@ -127,16 +281,16 @@ export default grammar({
               ">>>=",
             ),
           ),
-          field("right", $._expression),
+          right_field($._expression),
         ),
       ),
     _meta_argument: ($) =>
-      seq(field("argument", $.identifier), repeat($.dimension)),
+      seq(argument_field($.identifier), repeat($.dimension)),
     meta_expression: ($) =>
       prec(
         PREC.META,
         seq(
-          field("operator", choice("sizeof", "tagof")),
+          operator_field(choice("sizeof", "tagof")),
           choice(seq(...parenthesized($._meta_argument)), $._meta_argument),
         ),
       ),
@@ -145,15 +299,15 @@ export default grammar({
         prec.right(
           PREC.UNARY,
           seq(
-            field("operator", choice("++", "--")),
-            field("argument", $._expression),
+            operator_field(choice("++", "--")),
+            argument_field($._expression),
           ),
         ),
         prec.left(
           PREC.CALL,
           seq(
-            field("argument", $._expression),
-            field("operator", choice("++", "--")),
+            argument_field($._expression),
+            operator_field(choice("++", "--")),
           ),
         ),
       ),
@@ -161,11 +315,11 @@ export default grammar({
       prec.right(
         PREC.TERNARY,
         seq(
-          field("condition", $._expression),
+          condition_field($._expression),
           "?",
-          field("consequence", $._expression),
+          consequence_field($._expression),
           ":",
-          field("alternative", $._expression),
+          alternative_field($._expression),
         ),
       ),
     binary_expression: ($) => {
@@ -187,9 +341,9 @@ export default grammar({
           prec.left(
             precedence,
             seq(
-              field("left", $._expression),
-              field("operator", operator),
-              field("right", $._expression),
+              left_field($._expression),
+              operator_field(operator),
+              right_field($._expression),
             ),
           ),
         ),
@@ -199,19 +353,19 @@ export default grammar({
       prec.right(
         PREC.UNARY,
         seq(
-          field("operator", choice("!", "~", "-", "+", "&")),
-          field("argument", $._expression),
+          operator_field(choice("!", "~", "-", "+", "&")),
+          argument_field($._expression),
         ),
       ),
     comma_expression: ($) =>
       prec.left(
         PREC.COMMA,
-        seq(field("left", $._expression), ",", field("right", $._expression)),
+        seq(left_field($._expression), ",", right_field($._expression)),
       ),
     parenthesized_expression: ($) =>
       prec(
         PREC.PRIMARY,
-        seq(...parenthesized(field("expression", $._expression))),
+        seq(...parenthesized(expression_field($._expression))),
       ),
     index_expression: ($) =>
       prec(
@@ -221,23 +375,15 @@ export default grammar({
           ...bracketed(field("index", $._expression)),
         ),
       ),
-    type_cast: ($) => prec.left(PREC.CAST, seq($._type_definition, $._value)),
-    named_argument: ($) =>
-      seq(".", field("name", $.identifier), $._initializer),
-    _arguments: ($) =>
-      seq(
-        ...parenthesized(
-          optional(
-            commaSep1(
-              choice($.named_argument, $.omitted_argument, $._expression),
-            ),
-          ),
-        ),
-      ),
+    type_cast: ($) =>
+      prec.left(PREC.CAST, seq($._type_definition, value_field($._expression))),
+    named_argument: ($) => seq(".", name_field($.identifier), $._initializer),
+    arguments: ($) =>
+      commaSep1(choice($.named_argument, $.omitted_argument, $._expression)),
     call_expression: ($) =>
       prec(
         PREC.CALL,
-        seq(field("function", $.identifier), field("arguments", $._arguments)),
+        seq(name_field($.identifier), ...parenthesized(optional($.arguments))),
       ),
     _expression: ($) =>
       choice(
@@ -265,7 +411,6 @@ export default grammar({
         $.char_literal,
         $.string_literal,
         $.bool_literal,
-        $.array_literal,
       ),
     int_literal: ($) =>
       token(choice(DIGITS, seq("0x", HEX_DIGITS), seq("0b", BINARY_DIGITS))),
@@ -294,32 +439,49 @@ export default grammar({
         ),
         '"',
       ),
-    array_literal: ($) => seq(...braced(commaSep($._literal), optional(","))),
+    array_literal: ($) =>
+      seq(
+        ...braced(commaSep(choice($._literal, $.array_literal)), optional(",")),
+      ),
     // #endregion
 
     // #region Base
-    _name: ($) => field("name", $.identifier),
-    _value: ($) => field("value", $._expression),
-    _initializer: ($) => seq("=", $._value),
+    _initializer: ($) =>
+      seq("=", value_field(choice($._expression, $.array_literal))),
     dimension: ($) => seq(...bracketed()),
     fixed_dimension: ($) => seq(...bracketed(field("size", $._expression))),
-    _type_definition: ($) => seq(field("type", $._type), token.immediate(":")),
-    _type: ($) => choice($.builtin_type, $.identifier, $.any_type),
+    _type_definition: ($) =>
+      seq(
+        field("type", choice($.builtin_type, $.identifier, $.any_type)),
+        token.immediate(":"),
+      ),
     builtin_type: ($) => choice("Float", "bool", "_"),
     any_type: ($) => "any",
     identifier: ($) => /[a-zA-Z_]\w*/,
     // #endregion
 
     // #region Other
-    global_variable_modifiers: ($) =>
-      repeat1(choice("new", "static", "public", "stock", "const")),
-    variable_modifiers: ($) => repeat1(choice("new", "static", "const")),
     omitted_argument: ($) => "_",
     escape_sequence: ($) =>
       token(
-        prec(1, seq("\\", /(?:[abefnrt'\"\\%]|(?:x[a-zA-Z0-9]{0,2}|\d+);?)/)),
+        prec(
+          1,
+          seq(
+            choice("\\", "^"),
+            choice(
+              /[abefnrtvwyd\\'"%?]/,
+              /x[0-9a-fA-F]+;?/,
+              /[0-9]+;?/,
+              /d[0-9]{3};?/,
+            ),
+          ),
+        ),
       ),
     _semicolon: ($) => ";",
+    comment: ($) =>
+      token(
+        choice(seq("//", /.*/), seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
+      ),
     // #endregion
   },
 });
