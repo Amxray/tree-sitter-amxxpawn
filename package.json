@@ -7,7 +7,6 @@
     "type": "git",
     "url": "git+https://github.com/Amxray/tree-sitter-amxxpawn.git"
   },
-  "funding": "",
   "license": "MIT",
   "author": {
     "name": "Amxray",
@@ -49,10 +48,12 @@
     }
   },
   "scripts": {
+    "build": "tree-sitter generate; node-gyp build",
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test",
     "install": "node-gyp-build",
     "prestart": "tree-sitter build --wasm",
     "start": "tree-sitter playground",
-    "test": "tree-sitter generate && tree-sitter test",
     "web": "tree-sitter generate && tree-sitter build --wasm && tree-sitter playground"
   }
 }
